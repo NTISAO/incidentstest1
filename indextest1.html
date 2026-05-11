@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suivi des Incidents Sécuritaires</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body { margin:0; font-family: Arial; background:#0a0e14; color:white; }
+        #map { height: 100vh; width: 100%; }
+        .panel {
+            position:absolute;
+            top:10px;
+            left:10px;
+            background:#151b24;
+            padding:10px;
+            z-index:999;
+            border-radius:8px;
+        }
+        button {
+            padding:8px;
+            margin-top:5px;
+            cursor:pointer;
+        }
+        .item {
+            background:#1a2230;
+            margin:5px 0;
+            padding:5px;
+            border-radius:6px;
+            font-size:12px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="panel">
+    <button onclick="loadSharePointData()">🔄 Charger SharePoint</button>
+    <div id="list"></div>
+</div>
+
+<div id="map"></div>
+
+<script>
+
+let map;
+let markers = [];
+
+// INIT MAP
+map = L.map('map').setView([12.3, -1.5], 6);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: 'OSM'
+}).addTo(map);
+
+// ===============================
+// SHAREPOINT LOAD (XML)
+// ===============================
+
+async function loadSharePointData() {
+
+    const url = "https://isaoltdci.sharepoint.com/sites/ApplicationsISAO/_api/web/lists/getbytitle('Incidents ISAO')/items";
+
+    try {
+
+        const response = await fetch(url, {
+            method: "GET",
+            headers: {
+                "Accept": "application/xml"
+            },
+            credentials: "include"
+        });
+
+        const text = await response.text();
+
+        const xml = new DOMParser().parseFromString(text, "text/xml");
+
+        const entries = xml.getElementsByTagName("entry");
+
+        clearMarkers();
+
+        let listHTML = "";
+
+        for (let i = 0; i < entries.length; i++) {
+
+            const props = entries[i].getElementsByTagName("m:properties")[0];
+
+            const get = (tag) => {
+                const el = props.getElementsByTagName("d:" + tag)[0];
+                return el ? el.textContent : "";
+            };
+
+            const incident = {
+                title: get("Title"),
+                date: get("Dateincident"),
+                category: get("Categorie"),
+                lat: parseFloat(get("Latitude")),
+                lng: parseFloat(get("Longitude")),
+                desc: get("Description")
+            };
+
+            // LIST PANEL
+            listHTML += `
+                <div class="item">
+                    <b>${incident.title}</b><br>
+                    ${incident.category}<br>
+                    ${incident.date}
+                </div>
+            `;
+
+            // MAP MARKER
+            if (!isNaN(incident.lat) && !isNaN(incident.lng)) {
+                const marker = L.circleMarker([incident.lat, incident.lng], {
+                    radius: 6,
+                    color: "#ff6b6b"
+                }).addTo(map);
+
+                marker.bindPopup(`
+                    <b>${incident.title}</b><br>
+                    ${incident.category}<br>
+                    ${incident.desc}
+                `);
+
+                markers.push(marker);
+            }
+        }
+
+        document.getElementById("list").innerHTML = listHTML;
+
+        console.log("✔ SharePoint loaded");
+
+    } catch (err) {
+        console.error("SharePoint error:", err);
+    }
+}
+
+// CLEAR MARKERS
+function clearMarkers() {
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+}
+
+</script>
+
+</body>
+</html>
